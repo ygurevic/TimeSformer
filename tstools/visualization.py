@@ -12,8 +12,10 @@ import slowfast.utils.distributed as du
 import slowfast.utils.logging as logging
 import slowfast.utils.misc as misc
 import slowfast.visualization.tensorboard_vis as tb
-from slowfast.datasets import loader
-from slowfast.models import build_model
+#from slowfast.datasets import loader
+#from slowfast.models import build_model
+from timesformer.datasets import loader
+from timesformer.models import build_model
 from slowfast.visualization.gradcam_utils import GradCAM
 from slowfast.visualization.prediction_vis import WrongPredictionVis
 from slowfast.visualization.utils import (

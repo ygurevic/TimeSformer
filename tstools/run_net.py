@@ -3,10 +3,9 @@
 """Wrapper to train and test a video classification model."""
 from timesformer.utils.misc import launch_job
 from timesformer.utils.parser import load_config, parse_args
-
-from tools.test_net import test
-from tools.train_net import train
-
+from tstools.test_net import test
+from tstools.train_net import train
+from tstools.visualization import visualize
 
 def get_func(cfg):
     train_func = train

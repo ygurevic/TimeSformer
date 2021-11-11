@@ -9,6 +9,7 @@ from collections import defaultdict, deque
 import torch
 from fvcore.common.timer import Timer
 from sklearn.metrics import average_precision_score
+from sklearn.metrics import roc_auc_score
 
 import timesformer.utils.logging as logging
 import timesformer.utils.metrics as metrics
@@ -178,6 +179,7 @@ class TestMeter(object):
             )
             self.stats["map"] = map
         else:
+            ks = tuple([k for k in ks if k <= cfg.MODEL.NUM_CLASSES])
             num_topks_correct = metrics.topks_correct(
                 self.video_preds, self.video_labels, ks
             )
@@ -191,6 +193,7 @@ class TestMeter(object):
                 self.stats["top{}_acc".format(k)] = "{:.{prec}f}".format(
                     topk, prec=2
                 )
+            self.stats["AUC"] = roc_auc_score(self.video_labels.detach().cpu(), np.argmax(self.video_preds.detach().cpu(), axis=1))
         logging.log_json_stats(self.stats)
 
 

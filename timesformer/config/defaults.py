@@ -218,7 +218,7 @@ _C.MODEL.LOSS_FUNC = "cross_entropy"
 _C.MODEL.SINGLE_PATHWAY_ARCH = ["c2d", "i3d", "slow", "x3d"]
 
 # Model architectures that has multiple pathways.
-_C.MODEL.MULTI_PATHWAY_ARCH = ["slowfast"]
+_C.MODEL.MULTI_PATHWAY_ARCH = ["slowfast", "vit"]
 
 # Dropout rate before final projection in the backbone.
 _C.MODEL.DROPOUT_RATE = 0.5

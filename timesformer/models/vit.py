@@ -67,7 +67,7 @@ class Attention(nn.Module):
            self.proj_drop = nn.Dropout(proj_drop)
         self.attn_drop = nn.Dropout(attn_drop)
 
-    def forward(self, x):
+    def forward(self, x, head_mask=None):
         B, N, C = x.shape
         if self.with_qkv:
            qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
@@ -79,12 +79,13 @@ class Attention(nn.Module):
         attn = (q @ k.transpose(-2, -1)) * self.scale
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
-
+        if head_mask is not None:
+            attn = attn * head_mask
         x = (attn @ v).transpose(1, 2).reshape(B, N, C)
         if self.with_qkv:
            x = self.proj(x)
            x = self.proj_drop(x)
-        return x
+        return x, attn
 
 class Block(nn.Module):
 
@@ -112,19 +113,21 @@ class Block(nn.Module):
         self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
 
 
-    def forward(self, x, B, T, W):
+    def forward(self, x, B, T, W, head_mask):
         num_spatial_tokens = (x.size(1) - 1) // T
         H = num_spatial_tokens // W
-
+        attn_temporal, attn_spatial = None, None
         if self.attention_type in ['space_only', 'joint_space_time']:
             x = x + self.drop_path(self.attn(self.norm1(x)))
             x = x + self.drop_path(self.mlp(self.norm2(x)))
-            return x
+            return x, attn_temporal, attn_spatial
         elif self.attention_type == 'divided_space_time':
             ## Temporal
             xt = x[:,1:,:]
             xt = rearrange(xt, 'b (h w t) m -> (b h w) t m',b=B,h=H,w=W,t=T)
-            res_temporal = self.drop_path(self.temporal_attn(self.temporal_norm1(xt)))
+            norm_xt = self.temporal_norm1(xt)
+            res_temporal, attn_temporal = self.temporal_attn(norm_xt, head_mask)
+            res_temporal = self.drop_path(res_temporal)
             res_temporal = rearrange(res_temporal, '(b h w) t m -> b (h w t) m',b=B,h=H,w=W,t=T)
             res_temporal = self.temporal_fc(res_temporal)
             xt = x[:,1:,:] + res_temporal
@@ -136,7 +139,9 @@ class Block(nn.Module):
             xs = xt
             xs = rearrange(xs, 'b (h w t) m -> (b t) (h w) m',b=B,h=H,w=W,t=T)
             xs = torch.cat((cls_token, xs), 1)
-            res_spatial = self.drop_path(self.attn(self.norm1(xs)))
+            norm_xs = self.norm1(xs)
+            res_spatial, attn_spatial = self.attn(norm_xs, head_mask)
+            res_spatial = self.drop_path(res_spatial)
 
             ### Taking care of CLS token
             cls_token = res_spatial[:,0,:]
@@ -150,7 +155,7 @@ class Block(nn.Module):
             ## Mlp
             x = torch.cat((init_cls_token, x), 1) + torch.cat((cls_token, res), 1)
             x = x + self.drop_path(self.mlp(self.norm2(x)))
-            return x
+            return x, attn_temporal, attn_spatial
 
 class PatchEmbed(nn.Module):
     """ Image to Patch Embedding
@@ -246,7 +251,7 @@ class VisionTransformer(nn.Module):
         self.num_classes = num_classes
         self.head = nn.Linear(self.embed_dim, num_classes) if num_classes > 0 else nn.Identity()
 
-    def forward_features(self, x):
+    def forward_features(self, x, output_attentions=False, head_mask=None):
         B = x.shape[0]
         x, T, W = self.patch_embed(x)
         cls_tokens = self.cls_token.expand(x.size(0), -1, -1)
@@ -288,21 +293,29 @@ class VisionTransformer(nn.Module):
             x = torch.cat((cls_tokens, x), dim=1)
 
         ## Attention blocks
+        all_attn_temporal = []
+        all_attn_spatial = []
+        all_hidden_states = []
         for blk in self.blocks:
-            x = blk(x, B, T, W)
-
+            x, attn_temporal, attn_spatial = blk(x, B, T, W, head_mask)
+            if output_attentions:
+                all_attn_temporal.append(attn_temporal)
+                all_attn_spatial.append(attn_spatial)
+                all_hidden_states.append(x)
         ### Predictions for space-only baseline
         if self.attention_type == 'space_only':
             x = rearrange(x, '(b t) n m -> b t n m',b=B,t=T)
             x = torch.mean(x, 1) # averaging predictions for every frame
 
         x = self.norm(x)
-        return x[:, 0]
+        return x[:, 0], all_attn_temporal, all_attn_spatial, all_hidden_states
 
-    def forward(self, x):
-        x = self.forward_features(x)
+    def forward(self, x, output_attentions, head_mask):
+        x, temporal_attentions, spatial_attentions, hidden_states = self.forward_features(x,
+                                                                                          output_attentions=output_attentions,
+                                                                                          head_mask=head_mask)
         x = self.head(x)
-        return x
+        return x, temporal_attentions, spatial_attentions, hidden_states
 
 def _conv_filter(state_dict, patch_size=16):
     """ convert patch embedding weight from manual patchify + linear proj to conv"""
@@ -346,6 +359,7 @@ class TimeSformer(nn.Module):
         self.num_patches = (img_size // patch_size) * (img_size // patch_size)
         if self.pretrained:
             load_pretrained(self.model, num_classes=self.model.num_classes, in_chans=kwargs.get('in_chans', 3), filter_fn=_conv_filter, img_size=img_size, num_frames=num_frames, num_patches=self.num_patches, attention_type=self.attention_type, pretrained_model=pretrained_model)
-    def forward(self, x):
-        x = self.model(x)
-        return x
+
+    def forward(self, x, output_attentions):
+        x, temporal_attentions, spatial_attentions, hidden_states = self.model(x, output_attentions=output_attentions)
+        return x, temporal_attentions, spatial_attentions, hidden_states

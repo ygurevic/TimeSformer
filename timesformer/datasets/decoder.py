@@ -263,7 +263,10 @@ def pyav_decode(
             clip_idx,
             num_clips,
         )
-        timebase = duration / frames_length
+        if frames_length > 0:
+           timebase = duration / frames_length
+        else:
+            timebase = tb
         video_start_pts = int(start_idx * timebase)
         video_end_pts = int(end_idx * timebase)
 

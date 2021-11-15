@@ -80,7 +80,7 @@ class Attention(nn.Module):
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
         if head_mask is not None:
-            attn = attn * head_mask
+            attn = attn * head_mask.view((1, head_mask.shape[0], 1, 1))
         x = (attn @ v).transpose(1, 2).reshape(B, N, C)
         if self.with_qkv:
            x = self.proj(x)
@@ -251,7 +251,7 @@ class VisionTransformer(nn.Module):
         self.num_classes = num_classes
         self.head = nn.Linear(self.embed_dim, num_classes) if num_classes > 0 else nn.Identity()
 
-    def forward_features(self, x, output_attentions=False, head_mask=None):
+    def forward_features(self, x, output_attentions, head_mask):
         B = x.shape[0]
         x, T, W = self.patch_embed(x)
         cls_tokens = self.cls_token.expand(x.size(0), -1, -1)
@@ -296,8 +296,9 @@ class VisionTransformer(nn.Module):
         all_attn_temporal = []
         all_attn_spatial = []
         all_hidden_states = []
-        for blk in self.blocks:
-            x, attn_temporal, attn_spatial = blk(x, B, T, W, head_mask)
+        for l,blk in enumerate(self.blocks):
+            head_mask_l = head_mask[l] if head_mask is not None else None
+            x, attn_temporal, attn_spatial = blk(x, B, T, W, head_mask_l)
             if output_attentions:
                 all_attn_temporal.append(attn_temporal)
                 all_attn_spatial.append(attn_spatial)
@@ -310,7 +311,7 @@ class VisionTransformer(nn.Module):
         x = self.norm(x)
         return x[:, 0], all_attn_temporal, all_attn_spatial, all_hidden_states
 
-    def forward(self, x, output_attentions, head_mask):
+    def forward(self, x, output_attentions=False, head_mask=None):
         x, temporal_attentions, spatial_attentions, hidden_states = self.forward_features(x,
                                                                                           output_attentions=output_attentions,
                                                                                           head_mask=head_mask)
@@ -360,6 +361,6 @@ class TimeSformer(nn.Module):
         if self.pretrained:
             load_pretrained(self.model, num_classes=self.model.num_classes, in_chans=kwargs.get('in_chans', 3), filter_fn=_conv_filter, img_size=img_size, num_frames=num_frames, num_patches=self.num_patches, attention_type=self.attention_type, pretrained_model=pretrained_model)
 
-    def forward(self, x, output_attentions):
-        x, temporal_attentions, spatial_attentions, hidden_states = self.model(x, output_attentions=output_attentions)
+    def forward(self, x, output_attentions, head_mask):
+        x, temporal_attentions, spatial_attentions, hidden_states = self.model(x, output_attentions=output_attentions, head_mask=head_mask)
         return x, temporal_attentions, spatial_attentions, hidden_states

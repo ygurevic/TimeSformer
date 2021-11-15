@@ -139,8 +139,8 @@ def train_epoch(
             else:
                 # Compute the errors.
                 topks = (1,5)
-                topks = tuple([topk in topks if topk <= cfg.MODEL.NUM_CLASSES])
-                num_topks_correct = metrics.topks_correct(preds, labels, topk)
+                topks = tuple([topk for topk in topks if topk <= cfg.MODEL.NUM_CLASSES])
+                num_topks_correct = metrics.topks_correct(preds, labels, topks)
                 top1_err, top5_err = [
                     (1.0 - x / preds.size(0)) * 100.0 for x in num_topks_correct
                 ]

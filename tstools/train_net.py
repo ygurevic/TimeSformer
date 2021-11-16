@@ -23,6 +23,7 @@ from timesformer.utils.multigrid import MultigridSchedule
 from timm.data import Mixup
 from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy
 
+
 logger = logging.get_logger(__name__)
 
 
@@ -141,9 +142,14 @@ def train_epoch(
                 topks = (1,5)
                 topks = tuple([topk for topk in topks if topk <= cfg.MODEL.NUM_CLASSES])
                 num_topks_correct = metrics.topks_correct(preds, labels, topks)
-                top1_err, top5_err = [
+                top_err = [
                     (1.0 - x / preds.size(0)) * 100.0 for x in num_topks_correct
                 ]
+                top1_err = top_err[0]
+                if len(top_err) > 1:
+                    top5_err = top_err[1]
+                else:
+                    top5_err = top1_err
                 # Gather all the predictions across all the devices.
                 if cfg.NUM_GPUS > 1:
                     loss, top1_err, top5_err = du.all_reduce(
@@ -258,9 +264,14 @@ def eval_epoch(val_loader, model, val_meter, cur_epoch, cfg, writer=None):
                 num_topks_correct = metrics.topks_correct(preds, labels, topks)
 
                 # Combine the errors across the GPUs.
-                top1_err, top5_err = [
+                top_err = [
                     (1.0 - x / preds.size(0)) * 100.0 for x in num_topks_correct
                 ]
+                top1_err = top_err[0]
+                if len(top_err) > 1:
+                    top5_err = top_err[1]
+                else:
+                    top5_err = top1_err
                 if cfg.NUM_GPUS > 1:
                     top1_err, top5_err = du.all_reduce([top1_err, top5_err])
 

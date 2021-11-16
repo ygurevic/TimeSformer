@@ -85,9 +85,9 @@ def train_epoch(
            loss_fun = SoftTargetCrossEntropy()
 
         if cfg.DETECTION.ENABLE:
-            preds = model(inputs, meta["boxes"])
+            preds, _, _, _ = model(inputs, meta["boxes"])
         else:
-            preds = model(inputs)
+            preds, _, _, _  = model(inputs)
 
         # Compute the loss.
         loss = loss_fun(preds, labels)

@@ -28,6 +28,7 @@ class TestMeter(object):
 
     def __init__(
         self,
+        cfg,
         num_videos,
         num_clips,
         num_cls,
@@ -50,6 +51,7 @@ class TestMeter(object):
                 include "sum", and "max".
         """
 
+        self._cfg = cfg
         self.iter_timer = Timer()
         self.data_timer = Timer()
         self.net_timer = Timer()
@@ -179,7 +181,7 @@ class TestMeter(object):
             )
             self.stats["map"] = map
         else:
-            ks = tuple([k for k in ks if k <= cfg.MODEL.NUM_CLASSES])
+            ks = tuple([k for k in ks if k <= self._cfg.MODEL.NUM_CLASSES])
             num_topks_correct = metrics.topks_correct(
                 self.video_preds, self.video_labels, ks
             )

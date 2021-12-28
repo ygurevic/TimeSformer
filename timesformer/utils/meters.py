@@ -226,10 +226,10 @@ class TestMeter(object):
                 print("Fall-out (false positive rate): {}".format(fall_out))
                 print("Miss rate (false negative rate): {}".format(miss_rate))
                 RocCurveDisplay.from_predictions(y_true, pred_scores[:, 1], name='ROC Curve for Scores')
-                plt.savefig('roc_scores.png')
+                plt.savefig(self._cfg.EXP_NAME + '_roc_scores.png')
                 plt.clf()
                 RocCurveDisplay.from_predictions(y_true, pred_scores_sm[:, 1], name='ROC Curve for Scores (softmax)')
-                plt.savefig('roc_scores_sm.png')
+                plt.savefig(self._cfg.EXP_NAME + 'roc_scores_sm.png')
                 plt.clf()
         logging.log_json_stats(self.stats)
 

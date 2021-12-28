@@ -407,6 +407,9 @@ _C.SOLVER.BASE_LR_SCALE_NUM_SHARDS = False
 # Misc options
 # ---------------------------------------------------------------------------- #
 
+# Experiment name (currently used only for saving the ROC plots)
+_C.EXP_NAME = "TimeSformer"
+
 # Number of GPUs to use (applies to both training and testing).
 _C.NUM_GPUS = 1
 

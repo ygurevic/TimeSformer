@@ -44,6 +44,14 @@ _C.TRAIN.ENABLE = True
 # Dataset.
 _C.TRAIN.DATASET = "kinetics"
 
+# Number of clips to sample from a video uniformly for aggregating the
+# prediction results.
+_C.TRAIN.NUM_ENSEMBLE_VIEWS = 1
+
+# Number of crops to sample from a frame spatially for aggregating the
+# prediction results.
+_C.TRAIN.NUM_SPATIAL_CROPS = 1
+
 ##
 _C.TRAIN.FINETUNE = False
 

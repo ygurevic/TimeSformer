@@ -61,8 +61,12 @@ class Kinetics(torch.utils.data.Dataset):
         # video. For testing, NUM_ENSEMBLE_VIEWS clips are sampled from every
         # video. For every clip, NUM_SPATIAL_CROPS is cropped spatially from
         # the frames.
-        if self.mode in ["train", "val"]:
+        if self.mode in ["val"]:
             self._num_clips = 1
+        elif self.mode in ["train"]:
+             self._num_clips = (
+                cfg.TRAIN.NUM_ENSEMBLE_VIEWS * cfg.TRAIN.NUM_SPATIAL_CROPS
+            )
         elif self.mode in ["test"]:
             self._num_clips = (
                 cfg.TEST.NUM_ENSEMBLE_VIEWS * cfg.TEST.NUM_SPATIAL_CROPS

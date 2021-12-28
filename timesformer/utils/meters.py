@@ -9,7 +9,12 @@ from collections import defaultdict, deque
 import torch
 from fvcore.common.timer import Timer
 from sklearn.metrics import average_precision_score
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_curve, auc
+from sklearn.metrics import roc_auc_score, confusion_matrix, accuracy_score
+from sklearn.metrics import RocCurveDisplay
+import matplotlib.pyplot as plt
+from scipy.special import softmax
+
 
 import timesformer.utils.logging as logging
 import timesformer.utils.metrics as metrics
@@ -195,7 +200,37 @@ class TestMeter(object):
                 self.stats["top{}_acc".format(k)] = "{:.{prec}f}".format(
                     topk, prec=2
                 )
-            self.stats["AUC"] = roc_auc_score(self.video_labels.detach().cpu(), np.argmax(self.video_preds.detach().cpu(), axis=1))
+            y_true = self.video_labels.detach().cpu().numpy()
+            pred_scores = self.video_preds.detach().cpu().numpy()
+            pred_labels = [np.argmax(pred_score) for pred_score in pred_scores]
+            pred_scores_sm = np.array([softmax(pred_score) for pred_score in pred_scores])
+            self.stats["AUC"] = roc_auc_score(y_true, pred_scores[:, 1]) 
+            false_positive_rate, true_positive_rate, thresholds = roc_curve(y_true, pred_scores_sm[:, 1]) 
+            print("AUC (on softmax): {}".format(auc(false_positive_rate, true_positive_rate)))
+            false_positive_rate, true_positive_rate, thresholds = roc_curve(y_true, pred_scores[:,1])
+            print("AUC (on raw socres): {}".format(auc(false_positive_rate, true_positive_rate)))
+            acc = accuracy_score(y_true, pred_labels)
+            print("Accuracy score: {}".format(acc))
+            conf_mat = confusion_matrix(y_true, pred_labels)
+            print("Conf mat:")
+            print(conf_mat)
+            if self._cfg.MODEL.NUM_CLASSES == 2: #TODO: handle the general case
+                tn, fp, fn, tp = conf_mat.ravel()
+                sensitivity = tp / (tp + fn) # TPR, recall
+                specificity = tn / (tn + fp) # TNR
+                fall_out = fp / (fp + tn) # FPR
+                miss_rate = fn / (fn + tp) # FNR
+
+                print("Sensitivity (true positive rate, recall): {}".format(sensitivity))
+                print("Specificity (true negative rate): {}".format(specificity))
+                print("Fall-out (false positive rate): {}".format(fall_out))
+                print("Miss rate (false negative rate): {}".format(miss_rate))
+                RocCurveDisplay.from_predictions(y_true, pred_scores[:, 1], name='ROC Curve for Scores')
+                plt.savefig('roc_scores.png')
+                plt.clf()
+                RocCurveDisplay.from_predictions(y_true, pred_scores_sm[:, 1], name='ROC Curve for Scores (softmax)')
+                plt.savefig('roc_scores_sm.png')
+                plt.clf()
         logging.log_json_stats(self.stats)
 
 

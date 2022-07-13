@@ -205,10 +205,8 @@ class TestMeter(object):
             pred_labels = [np.argmax(pred_score) for pred_score in pred_scores]
             pred_scores_sm = np.array([softmax(pred_score) for pred_score in pred_scores])
             self.stats["AUC"] = roc_auc_score(y_true, pred_scores[:, 1]) 
-            false_positive_rate, true_positive_rate, thresholds = roc_curve(y_true, pred_scores_sm[:, 1]) 
-            print("AUC (on softmax): {}".format(auc(false_positive_rate, true_positive_rate)))
             false_positive_rate, true_positive_rate, thresholds = roc_curve(y_true, pred_scores[:,1])
-            print("AUC (on raw socres): {}".format(auc(false_positive_rate, true_positive_rate)))
+            print("AUC: {}".format(auc(false_positive_rate, true_positive_rate)))
             acc = accuracy_score(y_true, pred_labels)
             print("Accuracy score: {}".format(acc))
             conf_mat = confusion_matrix(y_true, pred_labels)

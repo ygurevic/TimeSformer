@@ -14,6 +14,9 @@ If you find TimeSformer useful in your research, please use the following BibTeX
 }
 ```
 
+# Sampling
+use specific configuration file.
+
 # Model Zoo
 
 We provide TimeSformer models pretrained on Kinetics-400 (K400), Kinetics-600 (K600), Something-Something-V2 (SSv2), and HowTo100M datasets.

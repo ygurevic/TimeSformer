@@ -6,9 +6,6 @@ from pathlib import Path
 sys.path.append(str(Path(os.path.realpath(__file__)).parent.parent)) # path to TimeSformer
 
 
-import warnings
-warnings.filterwarnings("ignore", category=UserWarning) 
-
 """Wrapper to train and test a video classification model."""
 from timesformer.utils.misc import launch_job
 from timesformer.utils.parser import load_config, parse_args

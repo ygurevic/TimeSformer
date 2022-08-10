@@ -48,7 +48,6 @@ def stop_sampling(sam: sampler, cfg):
     while filename.exists(): # meant to be True on first chance
         global take_count
         take_count += 1
-        # filename = jsons / f"transformerXL-{args.name}-{take_count}.json"
         filename = jsons / f"{cfg.MODEL.MODEL_NAME}-{take_count}.json"
 
     gr.save_as_json(filename)

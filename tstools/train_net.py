@@ -26,11 +26,16 @@ from ptsampler import sampler
 logger = logging.get_logger(__name__)
 
 take_count = 0
+
+
 def stop_sampling(sam: sampler, cfg):
     from pathlib import Path
     gr = sam.graph(2)
     gr.name = "TimeSformer"
     gr.metadata["url"] = "https://github.com/intel-collab/applications.ai.healthcare.sheba-ibd"
+    import os
+    gr.metadata["first-commit-timestamp"] = os.popen(
+        "git log $(git rev-list --max-parents=0 HEAD) --format=%ci").read()
     gr.metadata["train"] = True
     gr.metadata["model"] = {
         "model_name": cfg.MODEL.MODEL_NAME,
@@ -45,7 +50,7 @@ def stop_sampling(sam: sampler, cfg):
     jsons = Path(__file__).parent.parent / "jsons"
     jsons.mkdir(exist_ok=True)
     filename = jsons
-    while filename.exists(): # meant to be True on first chance
+    while filename.exists():  # meant to be True on first chance
         global take_count
         take_count += 1
         filename = jsons / f"{cfg.MODEL.MODEL_NAME}-{take_count}.json"
@@ -74,12 +79,11 @@ def train_epoch(
     model.train()
     train_meter.iter_tic()
     data_size = len(train_loader)
-
     cur_global_batch_size = cfg.NUM_SHARDS * cfg.TRAIN.BATCH_SIZE
     num_iters = cfg.GLOBAL_BATCH_SIZE // cur_global_batch_size
 
     sampled_iteration = 2 if cfg.TRAIN.SAMPLE else 10000000000000
-    
+
     with sampler.Sampler(capture_stacktrace=False, start_iteration=sampled_iteration) as sam:
         for cur_iter, (inputs, labels, _, meta) in enumerate(train_loader):
             # Transfer the data to the current GPU device.
@@ -96,16 +100,18 @@ def train_epoch(
                             val[i] = val[i].cuda(non_blocking=True)
                     else:
                         meta[key] = val.cuda(non_blocking=True)
-            
+
             # Update the learning rate.
-            lr = optim.get_epoch_lr(cur_epoch + float(cur_iter) / data_size, cfg)
+            lr = optim.get_epoch_lr(
+                cur_epoch + float(cur_iter) / data_size, cfg)
             optim.set_lr(optimizer, lr)
 
             train_meter.data_toc()
 
             # Explicitly declare reduction to mean.
             if not cfg.MIXUP.ENABLED:
-                loss_fun = losses.get_loss_func(cfg.MODEL.LOSS_FUNC)(reduction="mean")
+                loss_fun = losses.get_loss_func(
+                    cfg.MODEL.LOSS_FUNC)(reduction="mean")
             else:
                 mixup_fn = Mixup(
                     mixup_alpha=cfg.MIXUP.ALPHA, cutmix_alpha=cfg.MIXUP.CUTMIX_ALPHA, cutmix_minmax=cfg.MIXUP.CUTMIX_MINMAX, prob=cfg.MIXUP.PROB, switch_prob=cfg.MIXUP.SWITCH_PROB, mode=cfg.MIXUP.MODE,
@@ -113,7 +119,7 @@ def train_epoch(
                 hard_labels = labels
                 inputs, labels = mixup_fn(inputs, labels)
                 loss_fun = SoftTargetCrossEntropy()
-                    
+
             with sam.scope("Forward"):
                 if cfg.DETECTION.ENABLE:
                     preds = model(inputs, meta["boxes"])
@@ -129,7 +135,7 @@ def train_epoch(
 
             # check Nan Loss.
             misc.check_nan_losses(loss)
-            with sam.scope("Backward"):                
+            with sam.scope("Backward"):
                 if cur_global_batch_size >= cfg.GLOBAL_BATCH_SIZE:
                     # Perform the backward pass.
                     optimizer.zero_grad()
@@ -146,10 +152,9 @@ def train_epoch(
                         optimizer.step()
                         optimizer.zero_grad()
 
-            if sam.is_active:        
-                break # stop sampling
-                
-            
+            if sam.is_active:
+                break  # stop sampling
+
             if cfg.DETECTION.ENABLE:
                 if cfg.NUM_GPUS > 1:
                     loss = du.all_reduce([loss])[0]
@@ -173,9 +178,11 @@ def train_epoch(
                     loss = loss.item()
                 else:
                     # Compute the errors.
-                    topks = (1,5)
-                    topks = tuple([topk for topk in topks if topk <= cfg.MODEL.NUM_CLASSES])
-                    num_topks_correct = metrics.topks_correct(preds, labels, topks)
+                    topks = (1, 5)
+                    topks = tuple(
+                        [topk for topk in topks if topk <= cfg.MODEL.NUM_CLASSES])
+                    num_topks_correct = metrics.topks_correct(
+                        preds, labels, topks)
                     top_err = [
                         (1.0 - x / preds.size(0)) * 100.0 for x in num_topks_correct
                     ]
@@ -226,7 +233,7 @@ def train_epoch(
             sam.new_iteration()
 
     if cfg.TRAIN.SAMPLE:
-        stop_sampling(sam,cfg)
+        stop_sampling(sam, cfg)
 
     # Log epoch stats.
     train_meter.log_epoch_stats(cur_epoch)
@@ -282,7 +289,8 @@ def eval_epoch(val_loader, model, val_meter, cur_epoch, cfg, writer=None):
 
             if cfg.NUM_GPUS > 1:
                 preds = torch.cat(du.all_gather_unaligned(preds), dim=0)
-                ori_boxes = torch.cat(du.all_gather_unaligned(ori_boxes), dim=0)
+                ori_boxes = torch.cat(
+                    du.all_gather_unaligned(ori_boxes), dim=0)
                 metadata = torch.cat(du.all_gather_unaligned(metadata), dim=0)
 
             val_meter.iter_toc()
@@ -297,8 +305,9 @@ def eval_epoch(val_loader, model, val_meter, cur_epoch, cfg, writer=None):
                     preds, labels = du.all_gather([preds, labels])
             else:
                 # Compute the errors.
-                topks = (1,5)
-                topks = tuple([topk for topk in topks if topk <= cfg.MODEL.NUM_CLASSES])
+                topks = (1, 5)
+                topks = tuple(
+                    [topk for topk in topks if topk <= cfg.MODEL.NUM_CLASSES])
                 num_topks_correct = metrics.topks_correct(preds, labels, topks)
 
                 # Combine the errors across the GPUs.
@@ -469,10 +478,10 @@ def train(cfg):
 
     # Load a checkpoint to resume training if applicable.
     if not cfg.TRAIN.FINETUNE:
-      start_epoch = cu.load_train_checkpoint(cfg, model, optimizer)
+        start_epoch = cu.load_train_checkpoint(cfg, model, optimizer)
     else:
-      start_epoch = 0
-      cu.load_checkpoint(cfg.TRAIN.CHECKPOINT_FILE_PATH, model)
+        start_epoch = 0
+        cu.load_checkpoint(cfg.TRAIN.CHECKPOINT_FILE_PATH, model)
 
     # Create the video train and val loaders.
     train_loader = loader.construct_loader(cfg, "train")
@@ -556,7 +565,8 @@ def train(cfg):
 
         # Save a checkpoint.
         if is_checkp_epoch:
-            cu.save_checkpoint(cfg.OUTPUT_DIR, model, optimizer, cur_epoch, cfg)
+            cu.save_checkpoint(cfg.OUTPUT_DIR, model,
+                               optimizer, cur_epoch, cfg)
         # Evaluate the model on validation set.
         if is_eval_epoch:
             eval_epoch(val_loader, model, val_meter, cur_epoch, cfg, writer)

@@ -34,7 +34,7 @@ def stop_sampling(sam: sampler, cfg):
     from pathlib import Path
     
     gr = sam.graph(2)
-    name = "TimeSformer"
+    name = "TimeSformerr"
     url = "https://github.com/intel-collab/applications.ai.healthcare.sheba-ibd"
     import os
     pub_date = (os.popen("git log $(git rev-list --max-parents=0 HEAD) --format=%ct").read()).strip()

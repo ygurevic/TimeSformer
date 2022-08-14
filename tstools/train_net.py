@@ -1,6 +1,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 
 """Train a video classification model."""
+from curses import meta
 import numpy as np
 import pprint
 import torch
@@ -23,6 +24,7 @@ from timm.data import Mixup
 from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy
 
 from ptsampler import sampler
+from ptsampler import metadata
 logger = logging.get_logger(__name__)
 
 take_count = 0
@@ -30,14 +32,14 @@ take_count = 0
 
 def stop_sampling(sam: sampler, cfg):
     from pathlib import Path
+    
     gr = sam.graph(2)
-    gr.name = "TimeSformer"
-    gr.metadata["url"] = "https://github.com/intel-collab/applications.ai.healthcare.sheba-ibd"
+    name = "TimeSformer"
+    url = "https://github.com/intel-collab/applications.ai.healthcare.sheba-ibd"
     import os
-    gr.metadata["first-commit-timestamp"] = os.popen(
-        "git log $(git rev-list --max-parents=0 HEAD) --format=%ci").read()
-    gr.metadata["train"] = True
-    gr.metadata["model"] = {
+    pub_date = (os.popen("git log $(git rev-list --max-parents=0 HEAD) --format=%ct").read()).strip()
+    is_train = True
+    model_params = {
         "model_name": cfg.MODEL.MODEL_NAME,
         "dataset": cfg.TRAIN.DATASET,
         "batch_size": cfg.TRAIN.BATCH_SIZE,
@@ -48,14 +50,7 @@ def stop_sampling(sam: sampler, cfg):
     }
 
     jsons = Path(__file__).parent.parent / "jsons"
-    jsons.mkdir(exist_ok=True)
-    filename = jsons
-    while filename.exists():  # meant to be True on first chance
-        global take_count
-        take_count += 1
-        filename = jsons / f"{cfg.MODEL.MODEL_NAME}-{take_count}.json"
-
-    gr.save_as_json(filename)
+    metadata.set_model_metadata(gr, name, is_train, url, model_params, pub_date, jsons)
 
 
 def train_epoch(

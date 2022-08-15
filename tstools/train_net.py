@@ -98,16 +98,14 @@ def train_epoch(
                         meta[key] = val.cuda(non_blocking=True)
 
             # Update the learning rate.
-            lr = optim.get_epoch_lr(
-                cur_epoch + float(cur_iter) / data_size, cfg)
+            lr = optim.get_epoch_lr(cur_epoch + float(cur_iter) / data_size, cfg)
             optim.set_lr(optimizer, lr)
 
             train_meter.data_toc()
 
             # Explicitly declare reduction to mean.
             if not cfg.MIXUP.ENABLED:
-                loss_fun = losses.get_loss_func(
-                    cfg.MODEL.LOSS_FUNC)(reduction="mean")
+                loss_fun = losses.get_loss_func(cfg.MODEL.LOSS_FUNC)(reduction="mean")
             else:
                 mixup_fn = Mixup(
                     mixup_alpha=cfg.MIXUP.ALPHA, cutmix_alpha=cfg.MIXUP.CUTMIX_ALPHA, cutmix_minmax=cfg.MIXUP.CUTMIX_MINMAX, prob=cfg.MIXUP.PROB, switch_prob=cfg.MIXUP.SWITCH_PROB, mode=cfg.MIXUP.MODE,
@@ -175,10 +173,8 @@ def train_epoch(
                 else:
                     # Compute the errors.
                     topks = (1, 5)
-                    topks = tuple(
-                        [topk for topk in topks if topk <= cfg.MODEL.NUM_CLASSES])
-                    num_topks_correct = metrics.topks_correct(
-                        preds, labels, topks)
+                    topks = tuple([topk for topk in topks if topk <= cfg.MODEL.NUM_CLASSES])
+                    num_topks_correct = metrics.topks_correct(preds, labels, topks)
                     top_err = [
                         (1.0 - x / preds.size(0)) * 100.0 for x in num_topks_correct
                     ]
@@ -285,8 +281,7 @@ def eval_epoch(val_loader, model, val_meter, cur_epoch, cfg, writer=None):
 
             if cfg.NUM_GPUS > 1:
                 preds = torch.cat(du.all_gather_unaligned(preds), dim=0)
-                ori_boxes = torch.cat(
-                    du.all_gather_unaligned(ori_boxes), dim=0)
+                ori_boxes = torch.cat(du.all_gather_unaligned(ori_boxes), dim=0)
                 metadata = torch.cat(du.all_gather_unaligned(metadata), dim=0)
 
             val_meter.iter_toc()
@@ -302,8 +297,7 @@ def eval_epoch(val_loader, model, val_meter, cur_epoch, cfg, writer=None):
             else:
                 # Compute the errors.
                 topks = (1, 5)
-                topks = tuple(
-                    [topk for topk in topks if topk <= cfg.MODEL.NUM_CLASSES])
+                topks = tuple([topk for topk in topks if topk <= cfg.MODEL.NUM_CLASSES])
                 num_topks_correct = metrics.topks_correct(preds, labels, topks)
 
                 # Combine the errors across the GPUs.
@@ -561,8 +555,7 @@ def train(cfg):
 
         # Save a checkpoint.
         if is_checkp_epoch:
-            cu.save_checkpoint(cfg.OUTPUT_DIR, model,
-                               optimizer, cur_epoch, cfg)
+            cu.save_checkpoint(cfg.OUTPUT_DIR, model,optimizer, cur_epoch, cfg)
         # Evaluate the model on validation set.
         if is_eval_epoch:
             eval_epoch(val_loader, model, val_meter, cur_epoch, cfg, writer)

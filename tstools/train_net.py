@@ -51,7 +51,7 @@ def stop_sampling(sam: sampler, cfg):
 
     jsons = Path(__file__).parent.parent / "jsons"
     global take_count
-    take_count = metadata.set_model_metadata(gr, name, is_train, url, model_params, pub_date, jsons,take_count)
+    take_count = set_metadata.set_model_metadata(gr, name, is_train, url, model_params, pub_date, jsons,take_count)
 
 
 def train_epoch(

@@ -23,8 +23,7 @@ from timesformer.utils.multigrid import MultigridSchedule
 from timm.data import Mixup
 from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy
 
-from ptsampler import sampler
-from ptsampler import set_metadata
+from ptsampler import sampler,set_metadata
 logger = logging.get_logger(__name__)
 
 take_count = 0

@@ -23,7 +23,7 @@ from timesformer.utils.multigrid import MultigridSchedule
 from timm.data import Mixup
 from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy
 
-from ptsampler import sampler,set_metadata
+from ptsampler import sampler, metadata
 logger = logging.get_logger(__name__)
 
 take_count = 0
@@ -49,9 +49,16 @@ def stop_sampling(sam: sampler, cfg):
     }
 
     jsons = Path(__file__).parent.parent / "jsons"
+    jsons.mkdir(exist_ok=True)
+    filename = jsons
     global take_count
-    take_count = set_metadata.set_model_metadata(gr, name, is_train, url, model_params, pub_date, jsons,take_count)
-
+    while filename.exists(): 
+        take_count += 1
+        filename = jsons / f"-{name}-{take_count}.json"
+    
+    metadata.set_model_metadata(gr, name, is_train, url, model_params)
+    metadata.set_model_date(gr,pub_date)
+    gr.save_as_json(filename)
 
 def train_epoch(
     train_loader, model, optimizer, train_meter, cur_epoch, cfg, writer=None

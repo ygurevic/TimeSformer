@@ -48,16 +48,16 @@ def stop_sampling(sam: sampler, cfg):
         "loss_functon": cfg.MODEL.LOSS_FUNC
     }
 
+    pub_date = metadata.get_first_commit_date()
+    metadata.set_model_metadata(gr,name, is_train, url,pub_date, model_params)
     jsons = Path(__file__).parent.parent / "jsons"
     jsons.mkdir(exist_ok=True)
     filename = jsons
-    global take_count
-    while filename.exists(): 
+    while filename.exists(): # meant to be True on first chance
+        global take_count
         take_count += 1
-        filename = jsons / f"-{name}-{take_count}.json"
-    
-    metadata.set_model_metadata(gr, name, is_train, url, model_params)
-    metadata.set_model_date(gr,pub_date)
+        filename = jsons / f"TimeSformer-{cfg.MODEL.MODEL_NAME}-{take_count}.json"
+
     gr.save_as_json(filename)
 
 def train_epoch(

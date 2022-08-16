@@ -36,7 +36,6 @@ def stop_sampling(sam: sampler, cfg):
     name = "TimeSformer"
     url = "https://github.com/intel-collab/applications.ai.healthcare.sheba-ibd"
     import os
-    pub_date = (os.popen("git log $(git rev-list --max-parents=0 HEAD) --format=%ct").read()).strip()
     is_train = True
     model_params = {
         "model_name": cfg.MODEL.MODEL_NAME,
@@ -52,11 +51,7 @@ def stop_sampling(sam: sampler, cfg):
     metadata.set_model_metadata(gr,name, is_train, url,pub_date, model_params)
     jsons = Path(__file__).parent.parent / "jsons"
     jsons.mkdir(exist_ok=True)
-    filename = jsons
-    while filename.exists(): # meant to be True on first chance
-        global take_count
-        take_count += 1
-        filename = jsons / f"TimeSformer-{cfg.MODEL.MODEL_NAME}-{take_count}.json"
+    filename = jsons / f"TimeSformer-{cfg.MODEL.MODEL_NAME}.json"
 
     gr.save_as_json(filename)
 

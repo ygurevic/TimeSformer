@@ -48,6 +48,10 @@ _C.TRAIN.DATASET = "kinetics"
 # prediction results.
 _C.TRAIN.NUM_ENSEMBLE_VIEWS = 1
 
+# Number of crops to sample from a frame spatially for aggregating the
+# prediction results.
+_C.TRAIN.NUM_SPATIAL_CROPS = 1
+
 ##
 _C.TRAIN.FINETUNE = False
 
@@ -77,6 +81,9 @@ _C.TRAIN.CHECKPOINT_EPOCH_RESET = False
 
 # If set, clear all layer names according to the pattern provided.
 _C.TRAIN.CHECKPOINT_CLEAR_NAME_PATTERN = ()  # ("backbone.",)
+
+# If True, sample 
+_C.TRAIN.SAMPLE = False
 
 # ---------------------------------------------------------------------------- #
 # Testing options

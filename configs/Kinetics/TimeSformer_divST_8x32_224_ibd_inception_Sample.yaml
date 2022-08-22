@@ -1,0 +1,64 @@
+TRAIN:
+  ENABLE: True
+  DATASET: kinetics
+  BATCH_SIZE: 8
+  EVAL_PERIOD: 5
+  CHECKPOINT_PERIOD: 10 
+  AUTO_RESUME: True
+  CHECKPOINT_FILE_PATH: /home/modelzoo/IBD_data/TimeSformer_divST_8x32_224_K400.pyth
+  FINETUNE: True
+  SAMPLE: True
+DATA:
+  PATH_TO_DATA_DIR: /home/modelzoo/IBD_data/data
+  NUM_FRAMES: 16
+  SAMPLING_RATE: 32
+  TRAIN_JITTER_SCALES: [256, 320]
+  TRAIN_CROP_SIZE: 224
+  TEST_CROP_SIZE: 224
+  INPUT_CHANNEL_NUM: [3]
+  PATH_LABEL_SEPARATOR: ','
+TIMESFORMER:
+  ATTENTION_TYPE: 'divided_space_time'
+SOLVER:
+  BASE_LR: 0.0005
+  LR_POLICY: steps_with_relative_lrs
+  STEPS: [0, 11, 14]
+  LRS: [1, 0.1, 0.01]
+  MAX_EPOCH: 1
+  MOMENTUM: 0.9
+  WEIGHT_DECAY: 1e-4
+  OPTIMIZING_METHOD: sgd
+MODEL:
+  MODEL_NAME: vit_base_patch16_224
+  NUM_CLASSES: 2
+  ARCH: vit
+  LOSS_FUNC: cross_entropy
+  DROPOUT_RATE: 0.5
+TEST:
+  ENABLE: False
+  DATASET: kinetics
+  BATCH_SIZE: 4
+  NUM_ENSEMBLE_VIEWS: 1
+  NUM_SPATIAL_CROPS: 3
+DATA_LOADER:
+  NUM_WORKERS: 0
+  PIN_MEMORY: True
+NUM_GPUS: 0
+NUM_SHARDS: 1
+RNG_SEED: 0
+OUTPUT_DIR: .
+TENSORBOARD:
+  ENABLE: True
+  CLASS_NAMES_PATH: /home/modelzoo/IBD_data/data/class_names.txt
+  CONFUSION_MATRIX:
+    ENABLE: True
+  HISTOGRAM:
+    ENABLE: True
+    TOPK: 1
+    #MODEL_VIS:
+    #  ENABLE: True
+    #  MODEL_WEIGHTS: True
+    #  ACTIVATIONS: True
+    #  INPUT_VIDEO: True
+    #WRONG_PRED_VIS:
+    #ENABLE: True

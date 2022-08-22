@@ -1,5 +1,11 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 
+import sys
+import os
+from pathlib import Path
+sys.path.append(str(Path(os.path.realpath(__file__)).parent.parent)) # path to TimeSformer
+
+
 """Wrapper to train and test a video classification model."""
 from timesformer.utils.misc import launch_job
 from timesformer.utils.parser import load_config, parse_args
@@ -22,7 +28,6 @@ def main():
     cfg = load_config(args)
 
     train, test = get_func(cfg)
-
     # Perform training.
     if cfg.TRAIN.ENABLE:
         launch_job(cfg=cfg, init_method=args.init_method, func=train)

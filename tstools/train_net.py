@@ -1,7 +1,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 
 """Train a video classification model."""
-
+from curses import meta
 import numpy as np
 import pprint
 import torch
@@ -23,9 +23,37 @@ from timesformer.utils.multigrid import MultigridSchedule
 from timm.data import Mixup
 from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy
 
-
+from ptsampler import sampler, metadata
 logger = logging.get_logger(__name__)
 
+take_count = 0
+
+
+def stop_sampling(sam: sampler, cfg):
+    from pathlib import Path
+    
+    gr = sam.graph(2)
+    name = "TimeSformer"
+    url = "https://github.com/intel-collab/applications.ai.healthcare.sheba-ibd"
+    import os
+    is_train = True
+    model_params = {
+        "model_name": cfg.MODEL.MODEL_NAME,
+        "dataset": cfg.TRAIN.DATASET,
+        "batch_size": cfg.TRAIN.BATCH_SIZE,
+        "eval_period": cfg.TRAIN.EVAL_PERIOD,
+        "checkpoint_period": cfg.TRAIN.CHECKPOINT_PERIOD,
+        "finetune": cfg.TRAIN.FINETUNE,
+        "loss_functon": cfg.MODEL.LOSS_FUNC
+    }
+
+    pub_date = metadata.get_first_commit_date()
+    metadata.set_model_metadata(gr,name, is_train, url,pub_date, model_params)
+    jsons = Path(__file__).parent.parent / "jsons"
+    jsons.mkdir(exist_ok=True)
+    filename = jsons / f"TimeSformer-{cfg.MODEL.MODEL_NAME}.json"
+
+    gr.save_as_json(filename)
 
 def train_epoch(
     train_loader, model, optimizer, train_meter, cur_epoch, cfg, writer=None
@@ -48,147 +76,157 @@ def train_epoch(
     model.train()
     train_meter.iter_tic()
     data_size = len(train_loader)
-
     cur_global_batch_size = cfg.NUM_SHARDS * cfg.TRAIN.BATCH_SIZE
     num_iters = cfg.GLOBAL_BATCH_SIZE // cur_global_batch_size
 
-    for cur_iter, (inputs, labels, _, meta) in enumerate(train_loader):
-        # Transfer the data to the current GPU device.
-        if cfg.NUM_GPUS:
-            if isinstance(inputs, (list,)):
-                for i in range(len(inputs)):
-                    inputs[i] = inputs[i].cuda(non_blocking=True)
-            else:
-                inputs = inputs.cuda(non_blocking=True)
-            labels = labels.cuda()
-            for key, val in meta.items():
-                if isinstance(val, (list,)):
-                    for i in range(len(val)):
-                        val[i] = val[i].cuda(non_blocking=True)
+    sampled_iteration = 2 if cfg.TRAIN.SAMPLE else 10000000000000
+
+    with sampler.Sampler(capture_stacktrace=False, start_iteration=sampled_iteration) as sam:
+        for cur_iter, (inputs, labels, _, meta) in enumerate(train_loader):
+            # Transfer the data to the current GPU device.
+            if cfg.NUM_GPUS:
+                if isinstance(inputs, (list,)):
+                    for i in range(len(inputs)):
+                        inputs[i] = inputs[i].cuda(non_blocking=True)
                 else:
-                    meta[key] = val.cuda(non_blocking=True)
+                    inputs = inputs.cuda(non_blocking=True)
+                labels = labels.cuda()
+                for key, val in meta.items():
+                    if isinstance(val, (list,)):
+                        for i in range(len(val)):
+                            val[i] = val[i].cuda(non_blocking=True)
+                    else:
+                        meta[key] = val.cuda(non_blocking=True)
 
-        # Update the learning rate.
-        lr = optim.get_epoch_lr(cur_epoch + float(cur_iter) / data_size, cfg)
-        optim.set_lr(optimizer, lr)
+            # Update the learning rate.
+            lr = optim.get_epoch_lr(cur_epoch + float(cur_iter) / data_size, cfg)
+            optim.set_lr(optimizer, lr)
 
-        train_meter.data_toc()
+            train_meter.data_toc()
 
-        # Explicitly declare reduction to mean.
-        if not cfg.MIXUP.ENABLED:
-           loss_fun = losses.get_loss_func(cfg.MODEL.LOSS_FUNC)(reduction="mean")
-        else:
-           mixup_fn = Mixup(
-               mixup_alpha=cfg.MIXUP.ALPHA, cutmix_alpha=cfg.MIXUP.CUTMIX_ALPHA, cutmix_minmax=cfg.MIXUP.CUTMIX_MINMAX, prob=cfg.MIXUP.PROB, switch_prob=cfg.MIXUP.SWITCH_PROB, mode=cfg.MIXUP.MODE,
-               label_smoothing=0.1, num_classes=cfg.MODEL.NUM_CLASSES)
-           hard_labels = labels
-           inputs, labels = mixup_fn(inputs, labels)
-           loss_fun = SoftTargetCrossEntropy()
+            # Explicitly declare reduction to mean.
+            if not cfg.MIXUP.ENABLED:
+                loss_fun = losses.get_loss_func(cfg.MODEL.LOSS_FUNC)(reduction="mean")
+            else:
+                mixup_fn = Mixup(
+                    mixup_alpha=cfg.MIXUP.ALPHA, cutmix_alpha=cfg.MIXUP.CUTMIX_ALPHA, cutmix_minmax=cfg.MIXUP.CUTMIX_MINMAX, prob=cfg.MIXUP.PROB, switch_prob=cfg.MIXUP.SWITCH_PROB, mode=cfg.MIXUP.MODE,
+                    label_smoothing=0.1, num_classes=cfg.MODEL.NUM_CLASSES)
+                hard_labels = labels
+                inputs, labels = mixup_fn(inputs, labels)
+                loss_fun = SoftTargetCrossEntropy()
 
-        if cfg.DETECTION.ENABLE:
-            preds = model(inputs, meta["boxes"])
-        else:
-            preds = model(inputs)
+            with sam.scope("Forward"):
+                if cfg.DETECTION.ENABLE:
+                    preds = model(inputs, meta["boxes"])
+                else:
+                    preds = model(inputs)
 
-        # Compute the loss.
-        loss = loss_fun(preds, labels)
+            # Compute the loss.
+            with sam.scope("Loss"):
+                loss = loss_fun(preds, labels)
 
-        if cfg.MIXUP.ENABLED:
-            labels = hard_labels
+            if cfg.MIXUP.ENABLED:
+                labels = hard_labels
 
-        # check Nan Loss.
-        misc.check_nan_losses(loss)
+            # check Nan Loss.
+            misc.check_nan_losses(loss)
+            with sam.scope("Backward"):
+                if cur_global_batch_size >= cfg.GLOBAL_BATCH_SIZE:
+                    # Perform the backward pass.
+                    optimizer.zero_grad()
+                    loss.backward()
+                    # Update the parameters.
+                    optimizer.step()
+                else:
+                    if cur_iter == 0:
+                        optimizer.zero_grad()
+                    loss.backward()
+                    if (cur_iter + 1) % num_iters == 0:
+                        for p in model.parameters():
+                            p.grad /= num_iters
+                        optimizer.step()
+                        optimizer.zero_grad()
 
+            if sam.is_active:
+                break  # stop sampling
 
-        if cur_global_batch_size >= cfg.GLOBAL_BATCH_SIZE:
-            # Perform the backward pass.
-            optimizer.zero_grad()
-            loss.backward()
-            # Update the parameters.
-            optimizer.step()
-        else:
-            if cur_iter == 0:
-                optimizer.zero_grad()
-            loss.backward()
-            if (cur_iter + 1) % num_iters == 0:
-                for p in model.parameters():
-                    p.grad /= num_iters
-                optimizer.step()
-                optimizer.zero_grad()
-
-        if cfg.DETECTION.ENABLE:
-            if cfg.NUM_GPUS > 1:
-                loss = du.all_reduce([loss])[0]
-            loss = loss.item()
-
-            # Update and log stats.
-            train_meter.update_stats(None, None, None, loss, lr)
-            # write to tensorboard format if available.
-            if writer is not None:
-                writer.add_scalars(
-                    {"Train/loss": loss, "Train/lr": lr},
-                    global_step=data_size * cur_epoch + cur_iter,
-                )
-
-        else:
-            top1_err, top5_err = None, None
-            if cfg.DATA.MULTI_LABEL:
-                # Gather all the predictions across all the devices.
+            if cfg.DETECTION.ENABLE:
                 if cfg.NUM_GPUS > 1:
-                    [loss] = du.all_reduce([loss])
+                    loss = du.all_reduce([loss])[0]
                 loss = loss.item()
-            else:
-                # Compute the errors.
-                topks = (1,5)
-                topks = tuple([topk for topk in topks if topk <= cfg.MODEL.NUM_CLASSES])
-                num_topks_correct = metrics.topks_correct(preds, labels, topks)
-                top_err = [
-                    (1.0 - x / preds.size(0)) * 100.0 for x in num_topks_correct
-                ]
-                top1_err = top_err[0]
-                if len(top_err) > 1:
-                    top5_err = top_err[1]
-                else:
-                    top5_err = top1_err
-                # Gather all the predictions across all the devices.
-                if cfg.NUM_GPUS > 1:
-                    loss, top1_err, top5_err = du.all_reduce(
-                        [loss, top1_err, top5_err]
+
+                # Update and log stats.
+                train_meter.update_stats(None, None, None, loss, lr)
+                # write to tensorboard format if available.
+                if writer is not None:
+                    writer.add_scalars(
+                        {"Train/loss": loss, "Train/lr": lr},
+                        global_step=data_size * cur_epoch + cur_iter,
                     )
 
-                # Copy the stats from GPU to CPU (sync point).
-                loss, top1_err, top5_err = (
-                    loss.item(),
-                    top1_err.item(),
-                    top5_err.item(),
-                )
+            else:
+                top1_err, top5_err = None, None
+                if cfg.DATA.MULTI_LABEL:
+                    # Gather all the predictions across all the devices.
+                    if cfg.NUM_GPUS > 1:
+                        [loss] = du.all_reduce([loss])
+                    loss = loss.item()
+                else:
+                    # Compute the errors.
+                    topks = (1, 5)
+                    topks = tuple([topk for topk in topks if topk <= cfg.MODEL.NUM_CLASSES])
+                    num_topks_correct = metrics.topks_correct(preds, labels, topks)
+                    top_err = [
+                        (1.0 - x / preds.size(0)) * 100.0 for x in num_topks_correct
+                    ]
+                    top1_err = top_err[0]
+                    if len(top_err) > 1:
+                        top5_err = top_err[1]
+                    else:
+                        top5_err = top1_err
+                    # Gather all the predictions across all the devices.
+                    if cfg.NUM_GPUS > 1:
+                        loss, top1_err, top5_err = du.all_reduce(
+                            [loss, top1_err, top5_err]
+                        )
 
-            # Update and log stats.
-            train_meter.update_stats(
-                top1_err,
-                top5_err,
-                loss,
-                lr,
-                inputs[0].size(0)
-                * max(
-                    cfg.NUM_GPUS, 1
-                ),  # If running  on CPU (cfg.NUM_GPUS == 1), use 1 to represent 1 CPU.
-            )
-            # write to tensorboard format if available.
-            if writer is not None:
-                writer.add_scalars(
-                    {
-                        "Train/loss": loss,
-                        "Train/lr": lr,
-                        "Train/Top1_err": top1_err,
-                        "Train/Top5_err": top5_err,
-                    },
-                    global_step=data_size * cur_epoch + cur_iter,
-                )
+                    # Copy the stats from GPU to CPU (sync point).
+                    loss, top1_err, top5_err = (
+                        loss.item(),
+                        top1_err.item(),
+                        top5_err.item(),
+                    )
 
-        train_meter.iter_toc()  # measure allreduce for this meter
-        train_meter.log_iter_stats(cur_epoch, cur_iter)
-        train_meter.iter_tic()
+                # Update and log stats.
+                train_meter.update_stats(
+                    top1_err,
+                    top5_err,
+                    loss,
+                    lr,
+                    inputs[0].size(0)
+                    * max(
+                        cfg.NUM_GPUS, 1
+                    ),  # If running  on CPU (cfg.NUM_GPUS == 1), use 1 to represent 1 CPU.
+                )
+                # write to tensorboard format if available.
+                if writer is not None:
+                    writer.add_scalars(
+                        {
+                            "Train/loss": loss,
+                            "Train/lr": lr,
+                            "Train/Top1_err": top1_err,
+                            "Train/Top5_err": top5_err,
+                        },
+                        global_step=data_size * cur_epoch + cur_iter,
+                    )
+
+            train_meter.iter_toc()  # measure allreduce for this meter
+            train_meter.log_iter_stats(cur_epoch, cur_iter)
+            train_meter.iter_tic()
+            sam.new_iteration()
+
+    if cfg.TRAIN.SAMPLE:
+        stop_sampling(sam, cfg)
 
     # Log epoch stats.
     train_meter.log_epoch_stats(cur_epoch)
@@ -259,7 +297,7 @@ def eval_epoch(val_loader, model, val_meter, cur_epoch, cfg, writer=None):
                     preds, labels = du.all_gather([preds, labels])
             else:
                 # Compute the errors.
-                topks = (1,5)
+                topks = (1, 5)
                 topks = tuple([topk for topk in topks if topk <= cfg.MODEL.NUM_CLASSES])
                 num_topks_correct = metrics.topks_correct(preds, labels, topks)
 
@@ -431,10 +469,10 @@ def train(cfg):
 
     # Load a checkpoint to resume training if applicable.
     if not cfg.TRAIN.FINETUNE:
-      start_epoch = cu.load_train_checkpoint(cfg, model, optimizer)
+        start_epoch = cu.load_train_checkpoint(cfg, model, optimizer)
     else:
-      start_epoch = 0
-      cu.load_checkpoint(cfg.TRAIN.CHECKPOINT_FILE_PATH, model)
+        start_epoch = 0
+        cu.load_checkpoint(cfg.TRAIN.CHECKPOINT_FILE_PATH, model)
 
     # Create the video train and val loaders.
     train_loader = loader.construct_loader(cfg, "train")
@@ -518,7 +556,7 @@ def train(cfg):
 
         # Save a checkpoint.
         if is_checkp_epoch:
-            cu.save_checkpoint(cfg.OUTPUT_DIR, model, optimizer, cur_epoch, cfg)
+            cu.save_checkpoint(cfg.OUTPUT_DIR, model,optimizer, cur_epoch, cfg)
         # Evaluate the model on validation set.
         if is_eval_epoch:
             eval_epoch(val_loader, model, val_meter, cur_epoch, cfg, writer)

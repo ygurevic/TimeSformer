@@ -38,13 +38,14 @@ def stop_sampling(sam: sampler, cfg):
     import os
     is_train = True
     model_params = {
-        "model_name": cfg.MODEL.MODEL_NAME,
         "dataset": cfg.TRAIN.DATASET,
         "batch_size": cfg.TRAIN.BATCH_SIZE,
         "eval_period": cfg.TRAIN.EVAL_PERIOD,
         "checkpoint_period": cfg.TRAIN.CHECKPOINT_PERIOD,
         "finetune": cfg.TRAIN.FINETUNE,
-        "loss_functon": cfg.MODEL.LOSS_FUNC
+        "loss_functon": cfg.MODEL.LOSS_FUNC,
+        "DROPOUT_RATE": cfg.MODEL.DROPOUT_RATE,
+
     }
 
     pub_date = metadata.get_first_commit_date()
